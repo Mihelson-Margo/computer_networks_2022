@@ -1,13 +1,18 @@
 import numpy as np
 import random
+import threading
+import time
 
+my_lock = threading.Lock()
 
 class Node:
-    def __init__(self, idx, ip, neighbours, n):
+    def __init__(self, idx, ip, neighbours, n, simulation_cycles):
         self.neighbours = neighbours
         self.idx = idx
         self.ip = ip
         self.n = n
+        self.simulation_cycles = simulation_cycles
+
         self.dist = np.zeros(n, dtype=int)
         self.next_id = n * [-1]
         for i in range(n):
@@ -34,6 +39,16 @@ class Node:
             print(f"{self.ip:20}{graph[idx].ip:20}{next_ip:20}{self.dist[idx]:10}")
         print()
 
+    def simulate(self, graph, lock):
+        for i in range(self.simulation_cycles):
+            with lock:
+                print(f"Simulations step {i+1} of router {self.ip}:")
+                self.print_routing(graph)
+            for u_idx in self.neighbours:
+                with lock:
+                    graph[u_idx].update(self.idx, graph)
+            time.sleep(1)
+
 
 def generate_ip(k):
     a = random.randint(1, 254)
@@ -42,35 +57,39 @@ def generate_ip(k):
     return f"{a}.{b}.{c}.{k}"
 
 
-def generate_graph(n = 4, _print=True):
+def generate_graph(n = 6):
     neighbours = {}
     ips = []
     for i in range(n):
         neighbours[i] = []
         ips.append(generate_ip(i+1))
 
+    print("The network has following links between routers:")
     for i in range(n):
         for j in range(i+1, n):
-            if random.randint(1, 100)%2 == 1:
+            if random.randint(1, 100) < 33:
                 neighbours[i].append(j)
                 neighbours[j].append(i)
-                if _print:
-                    print(f"{ips[i]} <-> {ips[j]}")
+                print(f"{ips[i]} <-> {ips[j]}")
+    print()
 
     graph = []
     for i in range(n):
-        graph.append(Node(i, ips[i], neighbours[i], n))
+        graph.append(Node(i, ips[i], neighbours[i], n, 3))
 
     return graph
 
 
-def simulate(graph, simulation_cycles):
-    for i in range(simulation_cycles):
-        for v_idx, node in enumerate(graph):
-            print(f"Simulations step {i+1} of router {node.ip}:")
-            node.print_routing(graph)
-            for u_idx in node.neighbours:
-                graph[u_idx].update(v_idx, graph)
+def simulate_all(graph):
+    threads = []
+    lock = threading.Lock()
+    for idx, node in enumerate(graph):
+        th = threading.Thread(target=node.simulate, args=(graph, lock,))
+        threads.append(th)
+        th.start()
+
+    for th in threads:
+        th.join()
 
     for node in graph:
         print(f"Final state of router {node.ip} table:")
@@ -80,7 +99,7 @@ def simulate(graph, simulation_cycles):
 def main():
     graph = generate_graph()
 
-    simulate(graph, 3)
+    simulate_all(graph)
 
 
 if __name__ == '__main__':
